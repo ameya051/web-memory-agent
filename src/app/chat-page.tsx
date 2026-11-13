@@ -1,8 +1,10 @@
+import { loadHistory } from '@/services/seed';
 import { PendingMigrationsError } from '@/services/store-postgres';
 import { toUIMessages } from '@/core/agent/thread';
 import { log } from '@/utils/log';
 import { Chat } from './chat';
 import { configResult } from './config';
+import { devEnabled, devView } from './dev';
 import { getStore } from './store';
 
 /** The chat UI for one conversation. An id with no rows yet is a new chat; null on `/`. */
@@ -30,6 +32,7 @@ export async function ChatPage({ conversationId }: { conversationId: string | nu
   try {
     const store = getStore();
     const user = await store.findUser();
+    const dev = devEnabled ? { ...devView(configResult.config), demoDay: (await loadHistory()).demoDay } : null;
     const [conversations, thread] = user
       ? await Promise.all([
           store.listConversations(user.id),
@@ -39,8 +42,9 @@ export async function ChatPage({ conversationId }: { conversationId: string | nu
     return (
       <Chat
         conversationId={conversationId}
-        initialMessages={thread ? toUIMessages(thread.messages, thread.sources) : []}
+        initialMessages={thread ? toUIMessages(thread.messages, thread.sources, thread.citedSaved) : []}
         conversations={conversations}
+        dev={dev}
       />
     );
   } catch (error) {

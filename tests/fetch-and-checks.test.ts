@@ -2,16 +2,16 @@ import { readUIMessageStream } from 'ai';
 import { describe, expect, it } from 'vitest';
 import { createSettableClock } from '@/services/clock';
 import { freshStore } from './db';
-import { createFixtureSearch, loadFixturePages } from '@/services/search-fixture';
+import { createFixtureSearch } from '@/services/search-fixture';
 import { chatErrorMessage } from '@/core/agent/errors';
 import { runChat } from '@/core/agent/loop';
 import { toChatStream, type ChatUIMessage } from '@/core/agent/stream';
 import { TOOL_BUDGETS } from '@/core/agent/exchange';
 import type { SearchProvider } from '@/core/ports';
-import { captureLogs, mockModel, promptText, textStep, toolStep, chatRequest } from './helpers';
+import { captureLogs, mockModel, promptText, textStep, toolStep, chatRequest, crmPages } from './helpers';
 
 const clock = createSettableClock(new Date('2026-11-12T10:00:00Z'));
-const fixtureSearch = createFixtureSearch(await loadFixturePages());
+const fixtureSearch = createFixtureSearch(await crmPages());
 const HUBSPOT = 'https://www.hubspot.com/pricing/sales';
 
 function countingFetches(inner: SearchProvider) {
@@ -187,7 +187,10 @@ describe('request and response logs', () => {
     await lastMessage(toChatStream(run, () => 'failed'));
     logs.restore();
 
-    expect(logs.lines[0]).toBe('[info] chat.request tz=Asia/Kolkata history=0 text="[23 chars]"');
+    // Store lines (migration check, saves) come first; the request line is the first of the agent's.
+    expect(logs.lines.find((l) => !l.startsWith('[info] db.'))).toBe(
+      '[info] chat.request tz=Asia/Kolkata history=0 memoryIndex=0 text="[23 chars]"',
+    );
     const steps = logs.lines.filter((l) => l.startsWith('[info] agent.step '));
     expect(steps).toHaveLength(2);
     expect(steps[0]).toMatch(/^\[info\] agent\.step step=0 model=\S+ finish=tool-calls tools=web_search ms=\d+ .*inputTokens=10 .*outputTokens=5$/);

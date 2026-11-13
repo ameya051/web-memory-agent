@@ -1,0 +1,6 @@
+{
+  "url": "https://neon.com/pricing",
+  "title": "Neon Postgres pricing",
+  "published_date": "2026-10-12",
+  "text": "Neon serverless Postgres pricing. The Free plan includes 0.5 GB of storage and 100 compute hours per project per month. The Launch plan is usage-based at $0.14 per compute-unit hour and $0.35 per GB-month of storage. The Scale plan is $0.26 per compute-unit hour with a 99.95% uptime SLA."
+}

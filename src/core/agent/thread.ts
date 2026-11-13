@@ -1,8 +1,9 @@
 import type { ModelMessage } from 'ai';
-import type { StoredMessage, StoredPart, ThreadSource } from '@/core/ports';
+import { localDate } from '@/utils/dates';
+import type { CitedSavedSource, StoredMessage, StoredPart, ThreadSource } from '@/core/ports';
 
 import type { ChatUIMessage } from './stream';
-import type { FetchPageResult, Flag, WebSearchResult } from '@/types/agent';
+import type { FetchPageResult, Flag, MemoryExchangeResult, Timing, WebSearchResult } from '@/types/agent';
 
 // A saved thread, turned into what the model and the page each need.
 
@@ -32,8 +33,15 @@ export function modelHistory(messages: StoredMessage[]): ModelMessage[] {
  * the saved sources; page text is not sent. Search results that were neither
  * cited nor fetched were not saved, so they come back as placeholders with an
  * empty url, which keeps the result count and is left out of the source list.
+ * search_memory outputs keep their exchange ids and the earlier reads they
+ * gave refs to; questions and answers are not reloaded.
  */
-export function toUIMessages(messages: StoredMessage[], sources: ThreadSource[]): ChatUIMessage[] {
+export function toUIMessages(
+  messages: StoredMessage[],
+  sources: ThreadSource[],
+  citedSaved: CitedSavedSource[] = [],
+): ChatUIMessage[] {
+  const savedById = new Map(citedSaved.map((s) => [s.id, s]));
   const byMessage = new Map<string, Map<string, ThreadSource>>();
   for (const s of sources) {
     const refs = byMessage.get(s.assistantMessageId) ?? new Map<string, ThreadSource>();
@@ -46,10 +54,14 @@ export function toUIMessages(messages: StoredMessage[], sources: ThreadSource[])
     return {
       id: m.id,
       role: m.role,
-      metadata: m.role === 'assistant' ? { flags: (m.flags ?? []) as Flag[], saved: true } : undefined,
+      metadata:
+        m.role === 'assistant'
+          ? { flags: (m.flags ?? []) as Flag[], saved: true, ...(m.timing && { timing: m.timing as Timing }) }
+          : undefined,
       parts: m.parts.map((p): ChatUIMessage['parts'][number] => {
         if (p.type === 'text') return { type: 'text', text: p.text, state: 'done' };
         if (p.type === 'reasoning') return { type: 'reasoning', text: p.text, state: 'done' };
+        if (p.name === 'search_memory') return memoryPart(p, savedById);
         return toolPart(p, saved);
       }),
     };
@@ -78,4 +90,26 @@ function toolPart(p: Extract<StoredPart, { type: 'tool' }>, saved: Map<string, T
     return { ref, url: s?.url ?? '', title: s?.title ?? null, published_date: s?.publishedAt ?? null, excerpt: '' };
   });
   return { ...base, type, state: 'output-available', output: { results } };
+}
+
+function memoryPart(p: Extract<StoredPart, { type: 'tool' }>, savedById: Map<string, CitedSavedSource>): ChatUIMessage['parts'][number] {
+  const base = { toolCallId: p.toolCallId, input: p.input as never, type: 'tool-search_memory' as const };
+  if (p.status === 'error') return { ...base, state: 'output-error', errorText: 'failed' } as never;
+
+  const exchanges = new Map<string, MemoryExchangeResult>(
+    p.refs.map((id) => [id, { exchange_id: id, conversation_id: '', asked_at: '', question: '', entities: [], claims: [], sources: [] }]),
+  );
+  for (const [ref, id] of Object.entries(p.savedSources ?? {})) {
+    const s = savedById.get(id);
+    if (!s) continue;
+    exchanges.get(s.exchangeId)?.sources.push({
+      ref,
+      url: s.url,
+      title: s.title,
+      fetched_on: localDate(s.fetchedAt, s.userTz),
+      version: s.version,
+      full_page: s.via === 'fetch',
+    });
+  }
+  return { ...base, state: 'output-available', output: { exchanges: [...exchanges.values()], total_matches: p.refs.length } };
 }

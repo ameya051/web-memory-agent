@@ -2,7 +2,17 @@ import { readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import pg from 'pg';
 import { elapsedMs, log } from '@/utils/log';
-import type { LatestFetch, Store, StoredMessage, ThreadSource } from '@/core/ports';
+import type {
+  CitedSavedSource,
+  ExchangeHeader,
+  ExtractionJob,
+  LatestFetch,
+  MemoryExchange,
+  SavedClaim,
+  Store,
+  StoredMessage,
+  ThreadSource,
+} from '@/core/ports';
 
 // The store on a hosted Postgres (Neon or Supabase) through one pg Pool
 // (spec 2, 5). The schema comes from migrations/ via `npm run migrate`; before
@@ -21,8 +31,6 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
   pool.on('error', (error) => log.warn('db.idle_connection_error', { error }));
 
   let ready: Promise<void> | null = null;
-  // The local user, cached so a request with an unchanged timezone costs no round trip.
-  let user: { id: string; timezone: string } | null = null;
   // A failed check is not cached, so the next request checks again after a migrate.
   const init = () =>
     (ready ??= checkMigrations(pool).catch((error) => {
@@ -84,14 +92,15 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
     end: () => pool.end(),
 
     async ensureUser(timezone, now) {
-      if (user?.timezone === timezone) return { id: user.id };
-      // One local user (spec 1.1). The table lock stops two first requests creating two.
-      const row = await transaction('ensureUser', async (client) => {
+      // Not cached, so a database reset under a running server cannot leave a
+      // deleted user's id behind. The usual case is this one statement.
+      const updateSql = `UPDATE users SET timezone = $1 WHERE id = (SELECT id FROM users ORDER BY created_at LIMIT 1) RETURNING id`;
+      const { rows } = await query<{ id: string }>('ensureUser', updateSql, [timezone]);
+      if (rows[0]) return rows[0];
+      // No user yet: one local user (spec 1.1). The table lock stops two first requests creating two.
+      return transaction('ensureUser.create', async (client) => {
         await client.query('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE');
-        const updated = await client.query<{ id: string }>(
-          `UPDATE users SET timezone = $1 WHERE id = (SELECT id FROM users ORDER BY created_at LIMIT 1) RETURNING id`,
-          [timezone],
-        );
+        const updated = await client.query<{ id: string }>(updateSql, [timezone]);
         if (updated.rows[0]) return updated.rows[0];
         const inserted = await client.query<{ id: string }>(
           'INSERT INTO users (timezone, created_at) VALUES ($1, $2) RETURNING id',
@@ -99,12 +108,9 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
         );
         return inserted.rows[0];
       });
-      user = { id: row.id, timezone };
-      return row;
     },
 
     async findUser() {
-      if (user) return { id: user.id };
       const { rows } = await query<{ id: string }>('findUser', 'SELECT id FROM users ORDER BY created_at LIMIT 1');
       return rows[0] ?? null;
     },
@@ -156,7 +162,7 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
       }));
       // jsonb values go as JSON text: pg would send a JS array as a Postgres array.
       const { rows } = await withSeqRetry(() =>
-        query<{ saved: number }>(
+        query<{ exchangeId: string }>(
           'saveAnswer',
           `WITH message AS (
              INSERT INTO messages (id, conversation_id, user_id, seq, role, parts, flags, timing, created_at)
@@ -180,14 +186,14 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
                ref text, url text, title text, published_at date, via text, fetched_at timestamptz,
                content_text text, content_hash text, version integer)
            )
-           SELECT count(*)::int AS saved FROM exchange`,
+           SELECT id AS "exchangeId" FROM exchange`,
           [
             a.message.id,
             a.conversationId,
             a.userId,
             JSON.stringify(a.message.parts),
             JSON.stringify(a.message.flags),
-            JSON.stringify(a.message.timing),
+            a.message.timing && JSON.stringify(a.message.timing),
             a.message.createdAt,
             e.askedAt,
             e.userTz,
@@ -199,11 +205,12 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
           ],
         ),
       );
-      if (rows[0].saved !== 1) throw new Error('Unknown conversation.');
+      if (!rows[0]) throw new Error('Unknown conversation.');
+      return { exchangeId: rows[0].exchangeId };
     },
 
     async loadThread(userId, conversationId) {
-      const [messages, sources] = await Promise.all([
+      const [messages, sources, citedSaved] = await Promise.all([
         query<StoredMessage>(
           'loadThread.messages',
           `SELECT id, seq, role, parts, flags, timing FROM messages
@@ -218,8 +225,24 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
            WHERE s.user_id = $1 AND e.conversation_id = $2`,
           [userId, conversationId],
         ),
+        // Earlier reads the thread's search_memory calls gave refs to, by the
+        // row ids saved in those tool parts.
+        query<CitedSavedSource>(
+          'loadThread.citedSaved',
+          `SELECT s.id, s.url, s.title, s.published_at::text AS "publishedAt", s.via, s.fetched_at AS "fetchedAt",
+                  s.version, s.exchange_id AS "exchangeId", e.user_tz AS "userTz"
+           FROM sources s JOIN exchanges e ON e.id = s.exchange_id
+           WHERE s.user_id = $1 AND s.id IN (
+             SELECT saved.value::uuid
+             FROM messages m
+             CROSS JOIN LATERAL jsonb_array_elements(m.parts) AS part
+             CROSS JOIN LATERAL jsonb_each_text(coalesce(part -> 'savedSources', '{}'::jsonb)) AS saved
+             WHERE m.user_id = $1 AND m.conversation_id = $2 AND part ->> 'name' = 'search_memory'
+           )`,
+          [userId, conversationId],
+        ),
       ]);
-      return { messages: messages.rows, sources: sources.rows };
+      return { messages: messages.rows, sources: sources.rows, citedSaved: citedSaved.rows };
     },
 
     async listConversations(userId) {
@@ -261,6 +284,163 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
         [userId, url],
       );
       return rows[0].found;
+    },
+
+    async searchMemory(userId, q) {
+      // Topic words match as OR, so one missing word does not hide an
+      // exchange; ts_rank_cd puts the best match first. Date filters use
+      // local_date, the asker's calendar date written at insert.
+      type Row = Omit<MemoryExchange, 'sources'> & { total: number; sources: Array<Omit<MemoryExchange['sources'][number], 'fetchedAt'> & { fetchedAt: string }> };
+      const { rows } = await query<Row>(
+        'searchMemory',
+        `WITH q AS (
+           SELECT CASE WHEN $4::text IS NULL THEN NULL
+                       ELSE replace(plainto_tsquery('english', $4::text)::text, ' & ', ' | ')::tsquery END AS tsq
+         ), matched AS (
+           SELECT e.id, e.conversation_id, e.asked_at, e.user_tz, e.question, e.answer,
+                  e.answer_summary, e.entities,
+                  count(*) OVER () AS total,
+                  coalesce(ts_rank_cd(e.search, q.tsq), 0) AS rank
+           FROM exchanges e, q
+           WHERE e.user_id = $1 AND e.user_message_id <> $5::uuid
+             AND ($2::date IS NULL OR e.local_date BETWEEN $2::date AND $3::date)
+             AND (q.tsq IS NULL OR e.search @@ q.tsq)
+           ORDER BY rank DESC, e.asked_at
+           LIMIT $6
+         )
+         SELECT m.id, m.conversation_id AS "conversationId", m.asked_at AS "askedAt", m.user_tz AS "userTz",
+                m.question, m.answer, m.answer_summary AS summary, m.entities, m.total::int AS total,
+                coalesce((
+                  SELECT json_agg(json_build_object(
+                           'entity', c.entity, 'attribute', c.attribute, 'value', c.value,
+                           'quote', c.quote, 'sourceId', c.source_id) ORDER BY c.entity, c.attribute)
+                  FROM claims c WHERE c.exchange_id = m.id AND c.user_id = $1
+                ), '[]'::json) AS claims,
+                coalesce((
+                  SELECT json_agg(json_build_object(
+                           'id', s.id, 'url', s.url, 'title', s.title, 'via', s.via, 'fetchedAt', s.fetched_at,
+                           'version', s.version, 'contentText', s.content_text, 'contentHash', s.content_hash)
+                         ORDER BY s.fetched_at, length(s.ref), s.ref)
+                  FROM sources s WHERE s.exchange_id = m.id AND s.user_id = $1
+                ), '[]'::json) AS sources
+         FROM matched m
+         ORDER BY m.rank DESC, m.asked_at`,
+        [userId, q.dateFrom ?? null, q.dateTo ?? q.dateFrom ?? null, q.query ?? null, q.excludeUserMessageId, q.limit],
+      );
+      return {
+        total: rows[0]?.total ?? 0,
+        exchanges: rows.map(({ total: _total, sources, ...e }) => ({
+          ...e,
+          sources: sources.map((src) => ({ ...src, fetchedAt: new Date(src.fetchedAt) })),
+        })),
+      };
+    },
+
+    async nearestExchanges(userId, q) {
+      const columns = `id, asked_at AS "askedAt", user_tz AS "userTz", local_date::text AS "localDate", topic, question`;
+      const { rows } = await query<ExchangeHeader>(
+        'nearestExchanges',
+        `(SELECT ${columns} FROM exchanges
+          WHERE user_id = $1 AND user_message_id <> $4::uuid AND local_date < $2::date
+          ORDER BY asked_at DESC LIMIT $5)
+         UNION ALL
+         (SELECT ${columns} FROM exchanges
+          WHERE user_id = $1 AND user_message_id <> $4::uuid AND local_date > $3::date
+          ORDER BY asked_at LIMIT $5)`,
+        [userId, q.dateFrom, q.dateTo, q.excludeUserMessageId, q.perSide],
+      );
+      return rows;
+    },
+
+    async recentExchanges(userId, limit) {
+      const { rows } = await query<ExchangeHeader>(
+        'recentExchanges',
+        `SELECT id, asked_at AS "askedAt", user_tz AS "userTz", local_date::text AS "localDate", topic, question
+         FROM exchanges WHERE user_id = $1
+         ORDER BY local_date DESC, asked_at DESC LIMIT $2`,
+        [userId, limit],
+      );
+      return rows;
+    },
+
+    async savedClaimsForUrl(userId, url, limit) {
+      const { rows } = await query<SavedClaim>(
+        'savedClaimsForUrl',
+        `SELECT c.entity, c.attribute, c.value, c.quote, e.asked_at AS "askedAt", e.user_tz AS "userTz", s.version
+         FROM sources s
+         JOIN claims c ON c.source_id = s.id
+         JOIN exchanges e ON e.id = c.exchange_id
+         WHERE s.user_id = $1 AND s.url = $2
+         ORDER BY e.asked_at DESC, c.entity, c.attribute
+         LIMIT $3`,
+        [userId, url, limit],
+      );
+      return rows;
+    },
+
+    async pendingExtractions() {
+      const { rows } = await query<{ id: string; userId: string }>(
+        'pendingExtractions',
+        `SELECT id, user_id AS "userId" FROM exchanges WHERE extraction_status = 'pending' ORDER BY asked_at`,
+      );
+      return rows;
+    },
+
+    async startExtraction(userId, exchangeId, maxAttempts) {
+      // One statement: a row stuck at the limit is failed, any other pending
+      // row gets one more attempt and is returned with its own sources.
+      const { rows } = await query<ExtractionJob>(
+        'startExtraction',
+        `WITH stuck AS (
+           UPDATE exchanges SET extraction_status = 'failed'
+           WHERE id = $2 AND user_id = $1 AND extraction_status = 'pending' AND extraction_attempts >= $3
+         ), started AS (
+           UPDATE exchanges SET extraction_attempts = extraction_attempts + 1
+           WHERE id = $2 AND user_id = $1 AND extraction_status = 'pending' AND extraction_attempts < $3
+           RETURNING id, question, answer
+         )
+         SELECT st.question, st.answer,
+                coalesce((
+                  SELECT json_agg(json_build_object('id', s.id, 'ref', s.ref, 'url', s.url, 'text', s.content_text)
+                                  ORDER BY length(s.ref), s.ref)
+                  FROM sources s WHERE s.exchange_id = st.id AND s.user_id = $1
+                ), '[]'::json) AS sources
+         FROM started st`,
+        [userId, exchangeId, maxAttempts],
+      );
+      return rows[0] ?? null;
+    },
+
+    async saveExtraction(userId, exchangeId, r) {
+      await transaction('saveExtraction', async (client) => {
+        await client.query('DELETE FROM claims WHERE exchange_id = $1 AND user_id = $2', [exchangeId, userId]);
+        if (r.claims.length > 0) {
+          await client.query(
+            `INSERT INTO claims (exchange_id, user_id, entity, attribute, value, source_id, quote)
+             SELECT $1::uuid, $2::uuid, c.entity, c.attribute, c.value, c."sourceId", c.quote
+             FROM jsonb_to_recordset($3::jsonb) AS c(entity text, attribute text, value text, "sourceId" uuid, quote text)`,
+            [exchangeId, userId, JSON.stringify(r.claims)],
+          );
+        }
+        await client.query(
+          `UPDATE exchanges SET extraction_status = $3, topic = $4, answer_summary = $5, entities = $6
+           WHERE id = $1 AND user_id = $2`,
+          [exchangeId, userId, r.status, r.topic, r.summary, r.entities],
+        );
+      });
+    },
+
+    async failExtraction(userId, exchangeId, maxAttempts) {
+      const { rows } = await query<{ status: 'pending' | 'failed' }>(
+        'failExtraction',
+        `UPDATE exchanges
+         SET extraction_status = CASE WHEN extraction_attempts >= $3 THEN 'failed' ELSE extraction_status END
+         WHERE id = $2 AND user_id = $1 AND extraction_status = 'pending'
+         RETURNING extraction_status AS status`,
+        [userId, exchangeId, maxAttempts],
+      );
+      // A row no longer pending was finished elsewhere: nothing left to retry.
+      return rows[0]?.status ?? 'failed';
     },
   };
 }

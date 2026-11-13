@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseChatRequest } from '@/core/agent/request';
+import { parseChatRequest } from '@/core/request';
 import { loadConfig } from '@/app/config';
 
 describe('config', () => {
@@ -10,11 +10,17 @@ describe('config', () => {
     });
   });
 
-  it('defaults the main model', () => {
-    const result = loadConfig({ OPENROUTER_API_KEY: 'a', EXA_API_KEY: 'b', DATABASE_URL: 'c', MODEL_MAIN: '' });
+  it('defaults the main and extraction models', () => {
+    const result = loadConfig({ OPENROUTER_API_KEY: 'a', EXA_API_KEY: 'b', DATABASE_URL: 'c', MODEL_MAIN: '', MODEL_EXTRACT: '' });
     expect(result).toEqual({
       ok: true,
-      config: { OPENROUTER_API_KEY: 'a', EXA_API_KEY: 'b', DATABASE_URL: 'c', MODEL_MAIN: 'anthropic/claude-sonnet-5.5' },
+      config: {
+        OPENROUTER_API_KEY: 'a',
+        EXA_API_KEY: 'b',
+        DATABASE_URL: 'c',
+        MODEL_MAIN: 'anthropic/claude-sonnet-5.5',
+        MODEL_EXTRACT: 'anthropic/claude-haiku-5.5',
+      },
     });
   });
 });

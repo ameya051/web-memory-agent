@@ -1,7 +1,7 @@
 import { readUIMessageStream } from 'ai';
 import { describe, expect, it } from 'vitest';
 import { createSettableClock } from '@/services/clock';
-import { createFixtureSearch, loadFixturePages } from '@/services/search-fixture';
+import { createFixtureSearch } from '@/services/search-fixture';
 import { freshStore } from './db';
 import { chatErrorMessage } from '@/core/agent/errors';
 import { runChat } from '@/core/agent/loop';
@@ -9,7 +9,7 @@ import { runChat } from '@/core/agent/loop';
 import { toChatStream, type ChatUIMessage } from '@/core/agent/stream';
 import { toUIMessages } from '@/core/agent/thread';
 import type { Store } from '@/core/ports';
-import { chatRequest, mockModel, promptText, textStep, toolStep } from './helpers';
+import { chatRequest, mockModel, promptText, textStep, toolStep, crmPages } from './helpers';
 import type { FixturePage } from '@/types/fixtures';
 import type { ChatRequest } from '@/types/agent';
 
@@ -17,7 +17,7 @@ import type { ChatRequest } from '@/types/agent';
 // evidence, and full-page reads are versioned (spec 5.3–5.5).
 
 const HUBSPOT = 'https://www.hubspot.com/pricing/sales';
-const fixtures = await loadFixturePages();
+const fixtures = await crmPages();
 
 type Step = Parameters<typeof mockModel>[0][number];
 
@@ -147,10 +147,14 @@ describe('saving an answer', () => {
       request,
       controller.signal,
     );
-    for await (const _ of readUIMessageStream<ChatUIMessage>({ stream: toChatStream(run, chatErrorMessage), onError: () => {} }));
+    const done: Array<string | null> = [];
+    const stream = toChatStream(run, chatErrorMessage, (id) => done.push(id));
+    for await (const _ of readUIMessageStream<ChatUIMessage>({ stream, onError: () => {} }));
     const user = (await store.findUser())!;
     const { messages } = await store.loadThread(user.id, request.conversationId);
     expect(messages.map((m) => m.role)).toEqual(['user']);
+    // Nothing saved, so no extraction job.
+    expect(done).toEqual([null]);
   });
 
   it('saves a repeated send once', async () => {

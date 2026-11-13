@@ -12,10 +12,16 @@ import type { ChatMetadata, Flag, Outcome, Timing } from '@/types/agent';
 // received, the answer is saved, and the flags and whether the save worked go
 // out as message metadata, before the finish chunk. A failed or stopped answer
 // gets no checks and is not saved; only its question stays (spec 6.4).
+// onDone hears the saved exchange's id, or null when nothing was saved, once
+// the stream has ended, so the caller can start the extraction job (spec 6.3).
 
 export type ChatUIMessage = UIMessage<ChatMetadata, never, InferUITools<AgentTools>>;
 
-export function toChatStream(run: ChatRun, onError: (error: unknown) => string) {
+export function toChatStream(
+  run: ChatRun,
+  onError: (error: unknown) => string,
+  onDone?: (exchangeId: string | null) => void,
+) {
   return createUIMessageStream<ChatUIMessage>({
     onError,
     execute: async ({ writer }) => {
@@ -28,6 +34,7 @@ export function toChatStream(run: ChatRun, onError: (error: unknown) => string) 
       let steps = 0;
       let flagCount: number | null = null;
       let timing: Timing | null = null;
+      let exchangeId: string | null = null;
       const measure = () =>
         summarizeTiming({
           startedAt: run.exchange.startedAt,
@@ -61,22 +68,23 @@ export function toChatStream(run: ChatRun, onError: (error: unknown) => string) 
         flagCount = flags.length;
         timing = measure();
         // Flags first, so the marks show without waiting on the database.
-        writer.write({ type: 'message-metadata', messageMetadata: { flags } });
-        const saved = await save(run, flags, timing);
-        writer.write({ type: 'message-metadata', messageMetadata: { saved } });
+        writer.write({ type: 'message-metadata', messageMetadata: { flags, timing } });
+        exchangeId = await save(run, flags, timing);
+        writer.write({ type: 'message-metadata', messageMetadata: { saved: exchangeId !== null } });
         writer.write({ type: 'finish', finishReason: await run.result.finishReason });
       } catch (error) {
         outcome = error instanceof Error && error.name === 'AbortError' ? 'cancelled' : 'error';
         throw error;
       } finally {
         log.info('chat.done', { outcome, ...(timing ?? measure()), steps, flags: flagCount });
+        onDone?.(exchangeId);
       }
     },
   });
 }
 
-/** Saves the answer; a failure leaves the answer on screen with a notice (spec 6.4). */
-async function save(run: ChatRun, flags: Flag[], timing: Timing): Promise<boolean> {
+/** Saves the answer and returns its exchange id; a failure leaves the answer on screen with a notice (spec 6.4). */
+async function save(run: ChatRun, flags: Flag[], timing: Timing): Promise<string | null> {
   try {
     const answer = await buildAnswer({
       exchange: run.exchange,
@@ -86,10 +94,10 @@ async function save(run: ChatRun, flags: Flag[], timing: Timing): Promise<boolea
       timing,
       now: run.deps.clock.now(),
     });
-    await run.deps.store.saveAnswer(answer);
-    return true;
+    const { exchangeId } = await run.deps.store.saveAnswer(answer);
+    return exchangeId;
   } catch (error) {
     log.error('chat.save_failed', { error });
-    return false;
+    return null;
   }
 }

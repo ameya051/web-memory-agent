@@ -1,0 +1,147 @@
+{
+  "demoDay": "2026-11-13T10:00",
+  "conversations": [
+    {
+      "id": "5eed0000-0000-4000-8000-000000000100",
+      "exchanges": [
+        {
+          "userMessageId": "5eed0000-0000-4000-8000-000000000101",
+          "assistantMessageId": "5eed0000-0000-4000-8000-000000000102",
+          "askedAt": "2026-11-03T11:00",
+          "question": "What's the current Node.js LTS version?",
+          "tools": [
+            {
+              "search": "Node.js LTS release",
+              "refs": [
+                "s1"
+              ]
+            },
+            {
+              "fetch": "https://nodejs.org/en/about/previous-releases",
+              "ref": "s2"
+            }
+          ],
+          "answer": "Node.js 26 is the Active LTS release: it entered Active LTS on 28 October 2026 and is the recommended version for most users [s2]. Node.js 24 is still supported in Maintenance LTS until 30 April 2028 [s2]."
+        }
+      ]
+    },
+    {
+      "id": "5eed0000-0000-4000-8000-000000000200",
+      "exchanges": [
+        {
+          "userMessageId": "5eed0000-0000-4000-8000-000000000201",
+          "assistantMessageId": "5eed0000-0000-4000-8000-000000000202",
+          "askedAt": "2026-11-04T19:20",
+          "question": "Give me a quick weeknight pasta idea.",
+          "tools": [],
+          "answer": "Try spaghetti aglio e olio: cook the pasta, warm sliced garlic and chilli flakes gently in plenty of olive oil, then toss everything with a splash of the pasta water and chopped parsley. It takes about as long as the pasta does."
+        }
+      ]
+    },
+    {
+      "id": "5eed0000-0000-4000-8000-000000000300",
+      "exchanges": [
+        {
+          "userMessageId": "5eed0000-0000-4000-8000-000000000301",
+          "assistantMessageId": "5eed0000-0000-4000-8000-000000000302",
+          "askedAt": "2026-11-08T23:30",
+          "question": "Explain what Kubernetes does in two sentences.",
+          "tools": [],
+          "answer": "Kubernetes runs containerised applications across a cluster of machines, deciding where each container goes and restarting or moving it when something fails. You describe the state you want, such as how many copies of a service should run, and it keeps the cluster matching that description."
+        }
+      ]
+    },
+    {
+      "id": "5eed0000-0000-4000-8000-000000000400",
+      "exchanges": [
+        {
+          "userMessageId": "5eed0000-0000-4000-8000-000000000401",
+          "assistantMessageId": "5eed0000-0000-4000-8000-000000000402",
+          "askedAt": "2026-11-09T10:05",
+          "question": "We're a 20-person sales team. Shortlist 5 CRM tools for us, with pricing.",
+          "tools": [
+            {
+              "search": "CRM pricing for a 20-person sales team",
+              "refs": [
+                "s1",
+                "s2",
+                "s3",
+                "s4",
+                "s5"
+              ]
+            },
+            {
+              "fetch": "https://www.hubspot.com/pricing/sales",
+              "ref": "s6"
+            },
+            {
+              "fetch": "https://www.pipedrive.com/en/pricing",
+              "ref": "s7",
+              "text": "Pipedrive pricing. Essential costs $14 per seat per month, billed annually. Advanced costs $24 per seat per month. Professional costs $49 per seat per month. Power costs $64 per seat per month."
+            },
+            {
+              "fetch": "https://www.salesforce.com/sales/pricing/",
+              "ref": "s8"
+            },
+            {
+              "fetch": "https://www.zoho.com/crm/zohocrm-pricing.html",
+              "ref": "s9"
+            },
+            {
+              "fetch": "https://www.freshworks.com/crm/pricing/",
+              "ref": "s10"
+            }
+          ],
+          "answer": "Here is a shortlist of five CRMs for a 20-person sales team, with prices billed annually:\n\n| CRM | Entry plan | Mid plan |\n|---|---|---|\n| HubSpot Sales Hub | Starter, $20 per seat per month [s6] | Professional, $90 per seat per month [s6] |\n| Pipedrive | Essential, $14 per seat per month [s7] | Advanced, $24 per seat per month [s7] |\n| Salesforce Sales Cloud | Starter Suite, $25 per user per month [s8] | Pro Suite, $100 per user per month [s8] |\n| Zoho CRM | Standard, $14 per user per month [s9] | Professional, $23 per user per month [s9] |\n| Freshsales | Growth, $9 per user per month [s10] | Pro, $39 per user per month [s10] |\n\nPipedrive and Zoho are the cheapest to start with. HubSpot and Salesforce cost more per seat but bundle more automation and reporting."
+        }
+      ]
+    },
+    {
+      "id": "5eed0000-0000-4000-8000-000000000500",
+      "exchanges": [
+        {
+          "userMessageId": "5eed0000-0000-4000-8000-000000000501",
+          "assistantMessageId": "5eed0000-0000-4000-8000-000000000502",
+          "askedAt": "2026-11-10T15:40",
+          "question": "Compare Postgres hosting for a small SaaS: Neon vs Supabase, mainly on price.",
+          "tools": [
+            {
+              "search": "Neon Postgres pricing",
+              "refs": [
+                "s1"
+              ]
+            },
+            {
+              "search": "Supabase pricing",
+              "refs": [
+                "s2"
+              ]
+            },
+            {
+              "fetch": "https://neon.com/pricing",
+              "ref": "s3"
+            },
+            {
+              "fetch": "https://supabase.com/pricing",
+              "ref": "s4"
+            }
+          ],
+          "answer": "Neon's Free plan includes 0.5 GB of storage and 100 compute hours per project per month, and its Launch plan is usage-based at $0.14 per compute-unit hour [s3]. Supabase's Pro plan costs $25 per month per organization and includes an 8 GB database [s4].\n\nFor a small SaaS with steady traffic, Supabase Pro gives the more predictable bill. Neon costs less when the database sits idle much of the time."
+        }
+      ]
+    },
+    {
+      "id": "5eed0000-0000-4000-8000-000000000600",
+      "exchanges": [
+        {
+          "userMessageId": "5eed0000-0000-4000-8000-000000000601",
+          "assistantMessageId": "5eed0000-0000-4000-8000-000000000602",
+          "askedAt": "2026-11-12T09:15",
+          "question": "Can you recommend a good book on negotiation?",
+          "tools": [],
+          "answer": "Never Split the Difference by Chris Voss is a popular, practical choice: it turns hostage-negotiation techniques into tactics for everyday deals. For a more principled approach, Getting to Yes by Roger Fisher and William Ury is the classic."
+        }
+      ]
+    }
+  ]
+}

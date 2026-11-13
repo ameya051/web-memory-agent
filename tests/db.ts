@@ -16,15 +16,25 @@ let ready: Promise<void> | undefined;
 let admin: pg.Pool | undefined;
 let shared: ReturnType<typeof createPostgresStore> | undefined;
 
-/** Empty tables and a store over them. A copy, so a test may replace a method. */
+/**
+ * Empty tables and a new store over them. A copy, so a test may replace a
+ * method.
+ */
 export async function freshStore(): Promise<Store> {
   ready ??= runner({ databaseUrl: TEST_DB, dir: 'migrations', direction: 'up', migrationsTable: 'pgmigrations', log: () => {} }).then(() => {});
   await ready;
   admin ??= new pg.Pool({ connectionString: TEST_DB, max: 1 });
-  shared ??= createPostgresStore(TEST_DB);
+  await shared?.end();
+  shared = createPostgresStore(TEST_DB);
   await admin.query('TRUNCATE claims, sources, exchanges, messages, conversations, users');
   const { end: _end, ...store } = shared;
   return store;
+}
+
+/** Runs SQL on the test database directly, to read or set state the store does not expose. */
+export async function sql<R extends pg.QueryResultRow>(text: string, values: unknown[] = []): Promise<R[]> {
+  if (!admin) throw new Error('Call freshStore() first.');
+  return (await admin.query<R>(text, values)).rows;
 }
 
 afterAll(async () => {

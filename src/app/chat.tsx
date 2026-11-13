@@ -8,14 +8,18 @@ import { citedRefs } from '@/core/agent/checks';
 import { urlKey } from '@/utils/url';
 import type { ChatUIMessage as ChatMessage } from '@/core/agent/stream';
 import { markFlaggedNumbers } from './citations';
+import { DevPanel, type DevProps } from './dev-panel';
 import { Markdown } from './markdown';
 import type { Cite } from '@/types/citations';
+import type { Timing } from '@/types/agent';
 
 type Part = ChatMessage['parts'][number];
 type SearchPart = Extract<Part, { type: 'tool-web_search' }>;
 type FetchPart = Extract<Part, { type: 'tool-fetch_page' }>;
-type ToolPart = SearchPart | FetchPart;
-type Source = { ref: string; url: string; title: string | null; via: 'search' | 'fetch' };
+type MemoryPart = Extract<Part, { type: 'tool-search_memory' }>;
+type ToolPart = SearchPart | FetchPart | MemoryPart;
+/** savedOn: memory reads only, the local date of the earlier read. */
+type Source = { ref: string; url: string; title: string | null; via: 'search' | 'fetch' | 'memory'; savedOn?: string };
 
 const MAX_CHARS = 4000;
 
@@ -40,9 +44,11 @@ type Props = {
   conversationId: string | null;
   initialMessages: ChatMessage[];
   conversations: Array<{ id: string; title: string | null }>;
+  /** null in production. */
+  dev: DevProps | null;
 };
 
-export function Chat({ conversationId, initialMessages, conversations }: Props) {
+export function Chat({ conversationId, initialMessages, conversations, dev }: Props) {
   const router = useRouter();
   const [fallbackId] = useState(() => crypto.randomUUID());
   const id = conversationId ?? fallbackId;
@@ -56,6 +62,7 @@ export function Chat({ conversationId, initialMessages, conversations }: Props) 
     onFinish: () => router.refresh(),
   });
   const [input, setInput] = useState('');
+  const [showTimings, setShowTimings] = useState(false);
   const busy = status === 'submitted' || status === 'streaming';
   const pending = pendingLabel(status, messages);
 
@@ -98,12 +105,13 @@ export function Chat({ conversationId, initialMessages, conversations }: Props) 
             </li>
           ))}
         </ul>
+        {dev && <DevPanel dev={dev} showTimings={showTimings} onShowTimings={setShowTimings} />}
       </nav>
       <main className="chat">
         <div className="messages">
           {messages.length === 0 && <p className="empty">Ask anything. Current facts are searched on the web.</p>}
           {messages.map((m) => (
-            <Message key={m.id} message={m} />
+            <Message key={m.id} message={m} showTimings={showTimings} />
           ))}
           {pending && <p className="thinking">{pending}</p>}
           {error && <p className="error">{errorText(error)}</p>}
@@ -133,7 +141,7 @@ export function Chat({ conversationId, initialMessages, conversations }: Props) 
   );
 }
 
-function Message({ message }: { message: ChatMessage }) {
+function Message({ message, showTimings }: { message: ChatMessage; showTimings: boolean }) {
   if (message.role === 'user') {
     const text = message.parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
     return <div className="msg user">{text}</div>;
@@ -143,6 +151,9 @@ function Message({ message }: { message: ChatMessage }) {
   const sources = steps.flatMap((p): Source[] => {
     if (p.state !== 'output-available') return [];
     if (p.type === 'tool-fetch_page') return [{ ...p.output, via: 'fetch' }];
+    if (p.type === 'tool-search_memory') {
+      return p.output.exchanges.flatMap((e) => e.sources.map((r): Source => ({ ...r, via: 'memory', savedOn: r.fetched_on })));
+    }
     // A reloaded search keeps placeholders (empty url) for results that were not saved.
     return p.output.results.flatMap((r): Source[] => (r.url ? [{ ...r, via: 'search' }] : []));
   });
@@ -185,6 +196,7 @@ function Message({ message }: { message: ChatMessage }) {
         </p>
       )}
       {sources.length > 0 && <Sources sources={sources} cites={cites} />}
+      {showTimings && message.metadata?.timing && <TimingLine timing={message.metadata.timing} />}
     </div>
   );
 }
@@ -200,7 +212,18 @@ function Reasoning({ text, done }: { text: string; done: boolean }) {
 }
 
 function isToolPart(p: Part): p is ToolPart {
-  return p.type === 'tool-web_search' || p.type === 'tool-fetch_page';
+  return p.type === 'tool-web_search' || p.type === 'tool-fetch_page' || p.type === 'tool-search_memory';
+}
+
+/** Dev panel timings for one answer (spec 6.4). */
+function TimingLine({ timing: t }: { timing: Timing }) {
+  const s = (ms: number | null) => (ms === null ? '–' : `${(ms / 1000).toFixed(1)} s`);
+  return (
+    <p className="timing">
+      first token {s(t.firstTokenMs)} · total {s(t.totalMs)} · model {s(t.modelMs)} · tools {s(t.toolsWallMs)} ({t.toolCount}{' '}
+      {t.toolCount === 1 ? 'call' : 'calls'})
+    </p>
+  );
 }
 
 /**
@@ -224,6 +247,7 @@ function pendingLabel(status: string, messages: ChatMessage[]): string | null {
 }
 
 function ToolStep({ part }: { part: ToolPart }) {
+  if (part.type === 'tool-search_memory') return <MemoryStep part={part} />;
   if (part.type === 'tool-fetch_page') {
     const url = part.input?.url ?? '';
     switch (part.state) {
@@ -260,6 +284,29 @@ function ToolStep({ part }: { part: ToolPart }) {
   }
 }
 
+function MemoryStep({ part }: { part: MemoryPart }) {
+  const input = part.input ?? {};
+  const dates = input.date_from ? (input.date_to && input.date_to !== input.date_from ? `${input.date_from} to ${input.date_to}` : input.date_from) : '';
+  const what = [dates, input.query && `“${input.query}”`].filter(Boolean).join(' · ');
+  switch (part.state) {
+    case 'input-streaming':
+    case 'input-available':
+      return <li className="step running">Searching memory {what}…</li>;
+    case 'output-available': {
+      const n = part.output.exchanges.length;
+      return (
+        <li className="step done">
+          Searched memory {what}: {n === 0 ? 'no record' : `${n} ${n === 1 ? 'exchange' : 'exchanges'}`}
+        </li>
+      );
+    }
+    case 'output-error':
+      return <li className="step failed">Memory search failed {what}</li>;
+    default:
+      return null;
+  }
+}
+
 function Sources({ sources, cites }: { sources: Source[]; cites: ReadonlyMap<string, Cite> }) {
   const cited = sources.filter((s) => cites.has(s.ref)).sort((a, b) => cites.get(a.ref)!.n - cites.get(b.ref)!.n);
   const others = sources.filter((s) => !cites.has(s.ref));
@@ -290,6 +337,7 @@ function SourceItem({ source, label }: { source: Source; label: string }) {
       <span className="host">
         {host(source.url)}
         {source.via === 'fetch' && ' · full page'}
+        {source.via === 'memory' && ` · saved read · ${source.savedOn}`}
       </span>
     </li>
   );
