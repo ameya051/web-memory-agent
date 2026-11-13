@@ -2,7 +2,7 @@ import { isStepCount, streamText, type LanguageModel, type StepResult, type Tool
 import { log } from '@/utils/log';
 import type { Clock, SearchProvider, Store } from '@/core/ports';
 import { createExchange } from './exchange';
-import { buildInstructions } from './prompt';
+import { buildInstructions, INDEX_SIZE } from './prompt';
 
 import { modelHistory } from './thread';
 import { createTools } from './tools';
@@ -17,6 +17,12 @@ export const MAX_STEPS = 8;
 export const MODEL_STALL_MS = 20_000;
 const TITLE_CHARS = 80;
 
+/** A conversation's title: its first question on one line, cut at 80 characters. */
+export function conversationTitle(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS)}…` : line;
+}
+
 export type AgentDeps = {
   model: LanguageModel;
   search: SearchProvider;
@@ -30,31 +36,33 @@ export async function runChat(deps: AgentDeps, request: ChatRequest, abortSignal
   const query = text.replace(/\s+/g, ' ').trim();
 
   // Saved on arrival, so the question survives a failed answer (spec 5.3).
-  // The save and the thread load run in parallel: one round trip, not two.
+  // The save, the thread load and the memory index run in parallel: one round
+  // trip, not three.
   const user = await deps.store.ensureUser(timeZone, askedAt);
-  const [, thread] = await Promise.all([
+  const [, thread, recent] = await Promise.all([
     deps.store.saveUserMessage({
       id: messageId,
       conversationId,
       userId: user.id,
       text,
-      title: query.length > TITLE_CHARS ? `${query.slice(0, TITLE_CHARS)}…` : query,
+      title: conversationTitle(text),
       createdAt: askedAt,
     }),
     deps.store.loadThread(user.id, conversationId),
+    deps.store.recentExchanges(user.id, INDEX_SIZE),
   ]);
   // Everything before this question. The load may or may not see the question
   // itself, and on a repeated send it is already there.
   const at = thread.messages.findIndex((m) => m.id === messageId);
   const history = modelHistory(at === -1 ? thread.messages : thread.messages.slice(0, at));
-  log.info('chat.request', { tz: timeZone, history: history.length, text: query });
+  log.info('chat.request', { tz: timeZone, history: history.length, memoryIndex: recent.length, text: query });
 
   const exchange = createExchange({ userId: user.id, conversationId, userMessageId: messageId, question: text, askedAt, timeZone });
   const tools = createTools(deps, exchange);
 
   const result = streamText({
     model: deps.model,
-    instructions: buildInstructions(askedAt, timeZone),
+    instructions: buildInstructions(askedAt, timeZone, recent),
     messages: [...history, { role: 'user', content: text }],
     tools,
     stopWhen: isStepCount(MAX_STEPS),

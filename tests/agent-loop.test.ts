@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createSettableClock } from '@/services/clock';
 import { freshStore } from './db';
-import { createFixtureSearch, loadFixturePages } from '@/services/search-fixture';
+import { createFixtureSearch } from '@/services/search-fixture';
 import { MAX_STEPS, runChat } from '@/core/agent/loop';
 import type { SearchProvider, SearchQuery } from '@/core/ports';
-import { mockModel, promptText, textStep, toolStep, chatRequest } from './helpers';
+import { mockModel, promptText, textStep, toolStep, chatRequest, crmPages } from './helpers';
 
 // 20:00 UTC on Thu 12 Nov 2026 is 01:30 on Fri 13 Nov in Kolkata.
 const clock = createSettableClock(new Date('2026-11-12T20:00:00Z'));
-const pages = await loadFixturePages();
+const pages = await crmPages();
 const fixtureSearch = createFixtureSearch(pages);
 
 function recording(inner: SearchProvider) {
@@ -72,7 +72,7 @@ describe('agent loop', () => {
     const system = model.doStreamCalls[0].prompt.filter((m) => m.role === 'system');
     expect(system).toHaveLength(2);
     expect(system[0].providerOptions).toEqual({ anthropic: { cacheControl: { type: 'ephemeral' } } });
-    expect(system[1].content).toContain('Friday, 13 November 2026 at 01:30');
+    expect(system[1].content).toContain('Friday, 13 November 2026, 01:30');
     expect(system[1].content).toContain('(2026-11-13)');
     expect(system[1].content).toContain('Asia/Kolkata');
   });

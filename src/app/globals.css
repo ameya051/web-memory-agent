@@ -46,8 +46,11 @@ code { font-size: 0.9em; }
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
-.sidebar ul { list-style: none; margin: 12px 0 0; padding: 0; }
+/* The conversation list scrolls; the dev section stays pinned below it. */
+.sidebar ul { list-style: none; margin: 12px 0 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; }
 .sidebar li a {
   display: block;
   padding: 6px 8px;
@@ -69,6 +72,16 @@ code { font-size: 0.9em; }
   color: inherit;
   cursor: pointer;
 }
+
+/* Dev panel (spec 8). */
+.dev { flex-shrink: 0; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 0.85em; }
+.dev h2 { margin: 0; font-size: 1em; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.dev p { margin: 8px 0; }
+.dev .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+.dev .row input[type='datetime-local'] { flex: 1; min-width: 0; font: inherit; }
+.dev > button { margin: 6px 0; }
+.dev .note { color: var(--muted); }
+.timing { margin: 6px 0 0; font-size: 0.8em; color: var(--muted); }
 
 @media (max-width: 700px) {
   .layout { flex-direction: column; }

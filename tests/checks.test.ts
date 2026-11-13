@@ -35,6 +35,13 @@ describe('number check', () => {
     ]);
   });
 
+  it('skips written dates, but still checks a figure beside one', () => {
+    for (const date of ['9 November', 'November 9, 2026', '9th Nov 2026', 'Nov. 9', '2026-11-09', 'November 2026']) {
+      expect(checkAnswer([`On ${date} Professional cost $90 per seat [s1].`], sources)).toEqual([]);
+    }
+    expect(checkAnswer(['On 9 November Professional cost $95 per seat [s1].'], sources)).toMatchObject([{ value: '95' }]);
+  });
+
   it('checks against the cited source only, accepting any of several', () => {
     expect(checkAnswer(['Essential is $14 [s1].'], sources)).toHaveLength(1);
     expect(checkAnswer(['Essential is $14 [s1][s2].'], sources)).toEqual([]);

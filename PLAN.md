@@ -96,7 +96,7 @@ Builds:
 - `search_memory` returns claims and summary when extraction is done; the memory index shows extracted topics.
 - The quote check in `fetch_page` and its three outcomes (spec 4.2). (R3)
 
-Demo: after an answer, the exchange gains a topic and claims, each with a quote found in its source. Stop the app before an extraction finishes, restart, and the claims appear without a new message. The three sample queries now run on claims. With fixture pages, a re-check shows all three outcomes: unchanged, page updated but fact unchanged, and changed. A test shows a repeatedly failing exchange stops at 3 attempts.
+Demo: after an answer, the exchange gains a topic and claims, each with a quote found in its source. Stop the app before an extraction finishes, restart, and the claims appear without a new message. The three sample queries now run on claims. With fixture pages, a re-check shows both outcomes decided in code: a claim is unchanged when the page version matches or its quote is still there, and needs checking when its quote is gone (Pipedrive's $24, reported as changed). A test shows a repeatedly failing exchange stops at 3 attempts.
 
 ## Phase 6: Eval, tuning and submission
 

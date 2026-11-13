@@ -7,15 +7,23 @@ import type { Flag, SourceRead } from '@/types/agent';
 // Number check: in a sentence or table row that cites sources, every number
 // must appear in the text of at least one source it cites. Numbers compare
 // after removing commas and trailing decimal zeros, so "$1,000.00" matches
-// "1000". Currency and units are not compared. List numbering, URLs, code and
-// digits attached to a word ("Q3", "GPT-4") are not numbers here.
+// "1000". Currency and units are not compared. List numbering, URLs, code,
+// written dates ("9 November", "Nov 9, 2026", "2026-11-09") and digits attached
+// to a word ("Q3", "GPT-4") are not numbers here: a re-check answer names the
+// date of the earlier read, which the page it cites does not contain.
 
 /** One citation marker: [s1] or [s1, s3]. */
 export const CITATION = /\[(s\d+(?:\s*,\s*s\d+)*)\]/g;
 const CITATION_RUN = /^(?:\s*\[s\d+(?:\s*,\s*s\d+)*\])+/;
 const ANSWER_NUMBER = /(?<![\p{L}\d.,])(?<!\p{L}-)\d(?:[\d,]*\d)?(?:\.\d+)?/gu;
 const SOURCE_NUMBER = /\d(?:[\d,]*\d)?(?:\.\d+)?/g;
+const MONTH =
+  '(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\\.?';
 const NOT_NUMBERS = [
+  /\b\d{4}-\d{2}-\d{2}\b/g, // ISO dates
+  new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}(?:,?\\s+\\d{4})?\\b`, 'gi'), // 9 November 2026
+  new RegExp(`\\b${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, 'gi'), // November 9, 2026
+  new RegExp(`\\b${MONTH}\\s+\\d{4}\\b`, 'gi'), // November 2026
   /^[ \t]*\d+[.)](?=\s)/gm, // list numbering
   /\]\([^)\s]*\)/g, // markdown link targets
   /https?:\/\/\S+/g, // bare URLs

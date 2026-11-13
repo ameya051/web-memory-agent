@@ -8,7 +8,7 @@ import type { LatestFetch } from '@/core/ports';
 import { ToolError } from './errors';
 import type { ExchangeContext, SourceRead, ToolCallTime } from '@/types/agent';
 
-export const TOOL_BUDGETS = { web_search: 10, fetch_page: 10 } as const;
+export const TOOL_BUDGETS = { web_search: 10, fetch_page: 10, search_memory: 3 } as const;
 type BudgetedTool = keyof typeof TOOL_BUDGETS;
 
 export function createExchange(context: ExchangeContext) {
@@ -16,7 +16,7 @@ export function createExchange(context: ExchangeContext) {
   // Versions decided in this request, by urlKey, so two reads of one page agree.
   const versions = new Map<string, LatestFetch>();
   const allowedUrls = new Set<string>();
-  const used: Record<BudgetedTool, number> = { web_search: 0, fetch_page: 0 };
+  const used: Record<BudgetedTool, number> = { web_search: 0, fetch_page: 0, search_memory: 0 };
   const toolCalls: ToolCallTime[] = [];
   let nextRef = 1;
 
@@ -32,7 +32,7 @@ export function createExchange(context: ExchangeContext) {
       toolCalls.push(call);
     },
 
-    /** Saves a read under a new ref. Search results join the fetch allow-list. */
+    /** Keeps a read under a new ref. Search results join the fetch allow-list; memory reads are saved sources, already on it. */
     addSource(read: Omit<SourceRead, 'ref'>): SourceRead {
       const source = { ref: `s${nextRef++}`, ...read };
       sources.set(source.ref, source);

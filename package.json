@@ -12,7 +12,8 @@
     "start": "next start",
     "test": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run --no-file-parallelism",
     "typecheck": "tsc --noEmit",
-    "migrate": "node --env-file-if-exists=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js --migrations-dir migrations --migration-file-language sql --migration-filename-format index"
+    "migrate": "node --env-file-if-exists=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js --migrations-dir migrations --migration-file-language sql --migration-filename-format index",
+    "seed": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/seed.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.174",

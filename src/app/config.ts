@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_MODEL_EXTRACT } from '@/services/model-openrouter';
 
 // Every environment variable is checked here, once, at startup (spec 3.1, R7).
 // An empty value counts as missing, so a copied .env.example fails clearly.
@@ -11,6 +12,9 @@ const schema = z.object({
   EXA_API_KEY: required,
   DATABASE_URL: required,
   MODEL_MAIN: z.preprocess(blankToUndefined, z.string().default('anthropic/claude-sonnet-5.5')),
+  MODEL_EXTRACT: z.preprocess(blankToUndefined, z.string().default(DEFAULT_MODEL_EXTRACT)),
+  // Dev only: what "now" is when the server starts, such as 2026-11-13T10:00:00+05:30 (spec 8).
+  DEV_CLOCK: z.preprocess(blankToUndefined, z.iso.datetime({ offset: true, local: true }).optional()),
 });
 
 export type Config = z.infer<typeof schema>;
