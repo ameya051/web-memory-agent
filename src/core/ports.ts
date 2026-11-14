@@ -218,13 +218,14 @@ export interface Store {
   ): Promise<{ messages: StoredMessage[]; sources: ThreadSource[]; citedSaved: CitedSavedSource[] }>;
   /** Newest activity first. */
   listConversations(userId: string): Promise<Array<{ id: string; title: string | null }>>;
-  /** The user's latest full-page read of a URL, for versioning. */
+  /** The user's full-page read of a URL with the highest version, for versioning. */
   latestFetch(userId: string, url: string): Promise<LatestFetch | null>;
   /** Whether the user has a saved source with this URL (the fetch_page allow-list). */
   hasSource(userId: string, url: string): Promise<boolean>;
   /**
    * Exchanges on the local dates and/or matching the topic words: by relevance
-   * with a query, else oldest first. total counts every match, not only those returned.
+   * with a query, else oldest first. A query with no topic words is ignored
+   * beside dates and matches nothing alone. total counts every match, not only those returned.
    */
   searchMemory(userId: string, q: MemoryQuery): Promise<{ exchanges: MemoryExchange[]; total: number }>;
   /** Up to perSide exchanges before dateFrom and after dateTo, nearest first on each side. */
@@ -234,7 +235,7 @@ export interface Store {
   ): Promise<ExchangeHeader[]>;
   /** The latest exchanges, newest first, for the memory index (spec 6.2). */
   recentExchanges(userId: string, limit: number): Promise<ExchangeHeader[]>;
-  /** The newest claims whose source is a read of this URL, for the quote check (spec 4.2). */
+  /** The newest claims whose source is a read of this URL, each claim once, for the quote check (spec 4.2). */
   savedClaimsForUrl(userId: string, url: string, limit: number): Promise<SavedClaim[]>;
 
   // Extraction jobs (spec 6.3). The exchanges table is the job list.

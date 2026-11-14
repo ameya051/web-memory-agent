@@ -8,17 +8,25 @@ import { getStore } from './store';
 // so a hot reload keeps the set of running jobs and cannot start one twice.
 // Server-only: never import from chat.tsx.
 
-const cache = globalThis as { extraction?: ExtractionJobs; swept?: boolean };
+const cache = globalThis as { extraction?: ExtractionJobs; sweepStarted?: boolean };
 
 export function getJobs(): ExtractionJobs {
   if (!configResult.ok) throw new Error('getJobs called without a valid config.');
   return (cache.extraction ??= createExtractionJobs({ model: createExtractModel(configResult.config), store: getStore() }));
 }
 
-/** The startup sweep (spec 6.3), in the background, once per process. Never throws. */
+/**
+ * The startup sweep (spec 6.3), in the background, once per process. Never
+ * throws. A sweep that could not read the job list (the database was down, or
+ * a migration was pending) does not count, so the next call starts it again.
+ */
 export function startSweep(): void {
-  if (!configResult.ok || cache.swept) return;
-  cache.swept = true;
+  if (!configResult.ok || cache.sweepStarted) return;
+  cache.sweepStarted = true;
   log.info('extract.sweep_start');
-  void getJobs().sweep();
+  void getJobs()
+    .sweep()
+    .then((swept) => {
+      if (!swept) cache.sweepStarted = false;
+    });
 }

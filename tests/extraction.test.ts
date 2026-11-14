@@ -149,6 +149,15 @@ describe('startup sweep', () => {
     const statuses = await Promise.all(exchanges.map((e) => row(e.id).then((r) => r.status)));
     expect(statuses.filter((s) => s === 'skipped')).toHaveLength(3);
   });
+
+  it('reports whether the job list could be read, so a failed sweep can run again', async () => {
+    const { store } = await seeded();
+    const model = extractModel([CRM_OUTPUT]);
+    const down: Store = { ...store, pendingExtractions: () => Promise.reject(new Error('database is down')) };
+    expect(await createExtractionJobs({ model, store: down }).sweep()).toBe(false);
+    expect(model.doGenerateCalls).toHaveLength(0);
+    expect(await createExtractionJobs({ model, store }).sweep()).toBe(true);
+  });
 });
 
 describe('extraction trigger', () => {

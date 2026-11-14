@@ -42,6 +42,11 @@ describe('number check', () => {
     expect(checkAnswer(['On 9 November Professional cost $95 per seat [s1].'], sources)).toMatchObject([{ value: '95' }]);
   });
 
+  it('reads a lowercase "may" after a number as a word, not a month', () => {
+    expect(checkAnswer(['The price of $29 may rise next year [s1].'], sources)).toMatchObject([{ value: '29' }]);
+    expect(checkAnswer(['The $90 may rise next year [s1].'], sources)).toEqual([]);
+  });
+
   it('checks against the cited source only, accepting any of several', () => {
     expect(checkAnswer(['Essential is $14 [s1].'], sources)).toHaveLength(1);
     expect(checkAnswer(['Essential is $14 [s1][s2].'], sources)).toEqual([]);

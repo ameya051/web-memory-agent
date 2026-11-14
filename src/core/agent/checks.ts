@@ -10,7 +10,8 @@ import type { Flag, SourceRead } from '@/types/agent';
 // "1000". Currency and units are not compared. List numbering, URLs, code,
 // written dates ("9 November", "Nov 9, 2026", "2026-11-09") and digits attached
 // to a word ("Q3", "GPT-4") are not numbers here: a re-check answer names the
-// date of the earlier read, which the page it cites does not contain.
+// date of the earlier read, which the page it cites does not contain. A month
+// counts only when capitalised, so "$29 may rise" keeps its number.
 
 /** One citation marker: [s1] or [s1, s3]. */
 export const CITATION = /\[(s\d+(?:\s*,\s*s\d+)*)\]/g;
@@ -21,9 +22,9 @@ const MONTH =
   '(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\\.?';
 const NOT_NUMBERS = [
   /\b\d{4}-\d{2}-\d{2}\b/g, // ISO dates
-  new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}(?:,?\\s+\\d{4})?\\b`, 'gi'), // 9 November 2026
-  new RegExp(`\\b${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, 'gi'), // November 9, 2026
-  new RegExp(`\\b${MONTH}\\s+\\d{4}\\b`, 'gi'), // November 2026
+  new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}(?:,?\\s+\\d{4})?\\b`, 'g'), // 9 November 2026
+  new RegExp(`\\b${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, 'g'), // November 9, 2026
+  new RegExp(`\\b${MONTH}\\s+\\d{4}\\b`, 'g'), // November 2026
   /^[ \t]*\d+[.)](?=\s)/gm, // list numbering
   /\]\([^)\s]*\)/g, // markdown link targets
   /https?:\/\/\S+/g, // bare URLs
