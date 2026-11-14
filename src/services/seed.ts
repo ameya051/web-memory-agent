@@ -39,7 +39,7 @@ export async function loadDemoHistory(
   const user = await store.ensureUser(timeZone, now);
   const fresh = [];
   for (const c of history.conversations) {
-    const { messages } = await store.loadThread(user.id, c.id);
+    const messages = await store.loadMessages(user.id, c.id);
     if (messages.length === 0) fresh.push(c);
   }
 

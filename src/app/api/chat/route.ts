@@ -8,7 +8,7 @@ import { runChat } from '@/core/agent/loop';
 import { parseChatRequest } from '@/core/request';
 import { toChatStream } from '@/core/agent/stream';
 import { configResult } from '@/app/config';
-import { getJobs } from '@/app/extraction';
+import { getJobs, startSweep } from '@/app/extraction';
 import { devState, searchFor } from '@/app/dev';
 import { getStore } from '@/app/store';
 
@@ -27,12 +27,15 @@ export async function POST(req: Request) {
   const parsed = parseChatRequest(await req.json().catch(() => null));
   if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
 
-  const deps = {
-    model: createMainModel(config),
-    search: await searchFor(config),
-    clock: devState(config).clock,
-    store: getStore(),
-  };
+  let search;
+  try {
+    search = await searchFor(config);
+  } catch (error) {
+    // Only the fixture web can fail here: its pages are read from disk.
+    log.error('chat.fixture_load_failed', { error });
+    return Response.json({ error: 'Could not load the fixture pages. Check evals/fixtures/pages.' }, { status: 500 });
+  }
+  const deps = { model: createMainModel(config), search, clock: devState(config).clock, store: getStore() };
   try {
     const run = await runChat(deps, parsed.request, req.signal);
     // The stream reports the saved exchange when it ends; awaiting that makes
@@ -40,6 +43,8 @@ export async function POST(req: Request) {
     let onDone!: (exchangeId: string | null) => void;
     const saved = new Promise<string | null>((resolve) => (onDone = resolve));
     after(async () => {
+      // A no-op unless the sweep at startup could not read the job list.
+      startSweep();
       const exchangeId = await saved;
       if (exchangeId) await getJobs().run(run.exchange.context.userId, exchangeId);
     });

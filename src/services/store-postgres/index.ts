@@ -88,6 +88,16 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
     }
   }
 
+  async function loadMessages(userId: string, conversationId: string): Promise<StoredMessage[]> {
+    const { rows } = await query<StoredMessage>(
+      'loadMessages',
+      `SELECT id, seq, role, parts, flags, timing FROM messages
+       WHERE user_id = $1 AND conversation_id = $2 ORDER BY seq`,
+      [userId, conversationId],
+    );
+    return rows;
+  }
+
   return {
     end: () => pool.end(),
 
@@ -209,14 +219,11 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
       return { exchangeId: rows[0].exchangeId };
     },
 
+    loadMessages,
+
     async loadThread(userId, conversationId) {
       const [messages, sources, citedSaved] = await Promise.all([
-        query<StoredMessage>(
-          'loadThread.messages',
-          `SELECT id, seq, role, parts, flags, timing FROM messages
-           WHERE user_id = $1 AND conversation_id = $2 ORDER BY seq`,
-          [userId, conversationId],
-        ),
+        loadMessages(userId, conversationId),
         query<ThreadSource>(
           'loadThread.sources',
           `SELECT s.ref, s.url, s.title, s.published_at::text AS "publishedAt", s.via,
@@ -242,7 +249,7 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
           [userId, conversationId],
         ),
       ]);
-      return { messages: messages.rows, sources: sources.rows, citedSaved: citedSaved.rows };
+      return { messages, sources: sources.rows, citedSaved: citedSaved.rows };
     },
 
     async listConversations(userId) {
@@ -263,10 +270,13 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
     async latestFetch(userId, url): Promise<LatestFetch | null> {
       const { rows } = await query<LatestFetch>(
         'latestFetch',
+        // Highest version first, not newest fetched_at: seeded history and a
+        // dev clock moved back save reads out of time order, and the next
+        // version must be a number no read of the URL has used.
         `WITH latest AS (
            SELECT version, content_hash FROM sources
            WHERE user_id = $1 AND url = $2 AND via = 'fetch'
-           ORDER BY fetched_at DESC, version DESC LIMIT 1
+           ORDER BY version DESC, fetched_at DESC LIMIT 1
          )
          SELECT l.version, l.content_hash AS hash,
                 (SELECT min(fetched_at) FROM sources
@@ -288,14 +298,15 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
 
     async searchMemory(userId, q) {
       // Topic words match as OR, so one missing word does not hide an
-      // exchange; ts_rank_cd puts the best match first. Date filters use
-      // local_date, the asker's calendar date written at insert.
+      // exchange; ts_rank_cd puts the best match first. A query made only of
+      // stop words ("what we did") has no topic words: tsq is NULL, so the
+      // dates alone decide, and without dates nothing matches. Date filters
+      // use local_date, the asker's calendar date written at insert.
       type Row = Omit<MemoryExchange, 'sources'> & { total: number; sources: Array<Omit<MemoryExchange['sources'][number], 'fetchedAt'> & { fetchedAt: string }> };
       const { rows } = await query<Row>(
         'searchMemory',
         `WITH q AS (
-           SELECT CASE WHEN $4::text IS NULL THEN NULL
-                       ELSE replace(plainto_tsquery('english', $4::text)::text, ' & ', ' | ')::tsquery END AS tsq
+           SELECT nullif(replace(plainto_tsquery('english', $4::text)::text, ' & ', ' | '), '')::tsquery AS tsq
          ), matched AS (
            SELECT e.id, e.conversation_id, e.asked_at, e.user_tz, e.question, e.answer,
                   e.answer_summary, e.entities,
@@ -305,6 +316,7 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
            WHERE e.user_id = $1 AND e.user_message_id <> $5::uuid
              AND ($2::date IS NULL OR e.local_date BETWEEN $2::date AND $3::date)
              AND (q.tsq IS NULL OR e.search @@ q.tsq)
+             AND ($2::date IS NOT NULL OR q.tsq IS NOT NULL)
            ORDER BY rank DESC, e.asked_at
            LIMIT $6
          )
@@ -366,12 +378,18 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
     async savedClaimsForUrl(userId, url, limit) {
       const { rows } = await query<SavedClaim>(
         'savedClaimsForUrl',
-        `SELECT c.entity, c.attribute, c.value, c.quote, e.asked_at AS "askedAt", e.user_tz AS "userTz", s.version
-         FROM sources s
-         JOIN claims c ON c.source_id = s.id
-         JOIN exchanges e ON e.id = c.exchange_id
-         WHERE s.user_id = $1 AND s.url = $2
-         ORDER BY e.asked_at DESC, c.entity, c.attribute
+        // Each claim once, as last said: a re-check saves the claims it finds
+        // unchanged again, and those copies would push older claims off the list.
+        `SELECT * FROM (
+           SELECT DISTINCT ON (c.entity, c.attribute, c.quote)
+                  c.entity, c.attribute, c.value, c.quote, e.asked_at AS "askedAt", e.user_tz AS "userTz", s.version
+           FROM sources s
+           JOIN claims c ON c.source_id = s.id
+           JOIN exchanges e ON e.id = c.exchange_id
+           WHERE s.user_id = $1 AND s.url = $2
+           ORDER BY c.entity, c.attribute, c.quote, e.asked_at DESC
+         ) newest
+         ORDER BY "askedAt" DESC, entity, attribute
          LIMIT $3`,
         [userId, url, limit],
       );

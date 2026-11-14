@@ -62,9 +62,9 @@ const searchMemoryInput = z
   .object({
     date_from: date.optional().describe(`The user's local calendar date, ${DATE_FORMAT}, inclusive`),
     date_to: date.optional().describe(`${DATE_FORMAT}, inclusive; defaults to date_from`),
-    query: z.string().min(1).max(200).optional().describe('Topic words, such as "Postgres hosting"'),
+    query: z.string().trim().max(200).optional().describe('Topic words, such as "Postgres hosting"'),
   })
-  .refine((i) => i.date_from !== undefined || i.query !== undefined, {
+  .refine((i) => i.date_from !== undefined || Boolean(i.query), {
     message: `Give date_from (${DATE_FORMAT}), query, or both.`,
   });
 
@@ -176,11 +176,10 @@ export function createTools(deps: { search: SearchProvider; clock: Clock; store:
         if (dateFrom && dateTo && dateTo < dateFrom) throw new ToolError('search_memory: date_to is before date_from.');
         exchange.spend('search_memory');
 
-        const query = input.query?.trim() || undefined;
         const found = await deps.store.searchMemory(userId, {
           dateFrom,
           dateTo,
-          query,
+          query: input.query || undefined,
           excludeUserMessageId: userMessageId,
           limit: MEMORY_LIMIT,
         });

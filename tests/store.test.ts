@@ -135,4 +135,18 @@ describe('store: postgres', { timeout: 30_000 }, () => {
     expect(await store.hasSource(userId, HUBSPOT)).toBe(true);
     expect(await store.hasSource(userId, 'https://example.com/')).toBe(false);
   });
+
+  it('versions against the highest version when a read is saved with an earlier time', async () => {
+    // A backdated read (seeded history, or a dev clock moved back) saved after a newer one.
+    const reads = [
+      { when: at('12T09:00:00'), version: 1, hash: 'h1' },
+      { when: at('09T09:00:00'), version: 2, hash: 'h2' },
+    ];
+    for (const r of reads) {
+      const c = crypto.randomUUID();
+      const q = await ask(store, userId, c, 'q', r.when);
+      await store.saveAnswer(answer(userId, c, q.id, r.when, [source({ fetchedAt: r.when, version: r.version, contentHash: r.hash })]));
+    }
+    expect(await store.latestFetch(userId, HUBSPOT)).toEqual({ version: 2, hash: 'h2', firstSeenAt: reads[1].when });
+  });
 });

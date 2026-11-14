@@ -17,7 +17,7 @@ export const EXTRACT_TIMEOUT_MS = 60_000;
 
 export function createExtractionJobs(deps: { model: LanguageModel; store: Store; retryDelaysMs?: number[] }) {
   const { model, store } = deps;
-  const delays = RETRY_DELAYS_MS;
+  const delays = deps.retryDelaysMs ?? RETRY_DELAYS_MS;
   // Exchanges with a job running now, so a hot reload or a repeated trigger
   // cannot start the same job twice.
   const running = new Set<string>();
@@ -69,15 +69,22 @@ export function createExtractionJobs(deps: { model: LanguageModel; store: Store;
     }
   }
 
-  /** Every pending exchange, oldest first, one at a time (spec 6.3). Never throws. */
-  async function sweep(): Promise<void> {
+  /**
+   * Every pending exchange, oldest first, one at a time (spec 6.3). Never
+   * throws: resolves false when the job list could not be read, so the caller
+   * can sweep again later.
+   */
+  async function sweep(): Promise<boolean> {
+    let pending;
     try {
-      const pending = await store.pendingExtractions();
-      log.info('extract.sweep', { pending: pending.length });
-      for (const p of pending) await run(p.userId, p.id);
+      pending = await store.pendingExtractions();
     } catch (error) {
       log.error('extract.sweep_failed', { error });
+      return false;
     }
+    log.info('extract.sweep', { pending: pending.length });
+    for (const p of pending) await run(p.userId, p.id);
+    return true;
   }
 
   return { run, sweep };

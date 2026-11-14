@@ -120,6 +120,18 @@ describe('search_memory', () => {
     ]);
   });
 
+  it('ignores a query with no topic words beside dates, and matches nothing with it alone', async () => {
+    const store = await seeded();
+    const dated = await memory(store, { date_from: '2026-11-09', query: 'what we did' });
+    const dateOnly = await memory(store, { date_from: '2026-11-09' });
+    expect(dateOnly.output!.total_matches).toBeGreaterThan(0);
+    expect(dated.output!.exchanges.map((e) => e.question)).toEqual(dateOnly.output!.exchanges.map((e) => e.question));
+    expect(dated.output!.nearest).toBeUndefined();
+
+    const alone = await memory(store, { query: 'what we did' });
+    expect(alone.output).toMatchObject({ exchanges: [], total_matches: 0 });
+  });
+
   it('never returns the exchange being answered, even on a repeated send', async () => {
     const store = await freshStore();
     const request = chatRequest('Tell me about Kubernetes');
@@ -132,6 +144,7 @@ describe('search_memory', () => {
     const store = await seeded();
     expect((await memory(store, { date_from: '3 Nov' })).error).toContain('YYYY-MM-DD');
     expect((await memory(store, {})).error).toContain('YYYY-MM-DD');
+    expect((await memory(store, { query: '   ' })).error).toContain('YYYY-MM-DD');
     expect((await memory(store, { date_from: '2026-02-30' })).error).toContain('not a calendar date');
     expect((await memory(store, { date_from: '2026-11-10', date_to: '2026-11-09' })).error).toContain('before date_from');
   });
@@ -214,6 +227,23 @@ describe('demo history', () => {
       [PIPEDRIVE, 2, '2026-11-13'],
     ]);
   });
+
+  it('gives a changed page a new version when the history was loaded after a live read', async () => {
+    const store = await freshStore();
+    const live = await send(store, [
+      toolStep([{ name: 'web_search', input: { query: 'Pipedrive pricing' } }]),
+      toolStep([{ name: 'fetch_page', input: { url: PIPEDRIVE } }]),
+      textStep('Read.'),
+    ]);
+    const first = live.content.flatMap((c) => (c.type === 'tool-result' ? [c.output as FetchPageResult] : [])).find((r) => r.url === PIPEDRIVE)!;
+    expect(first.version).toBe(1);
+
+    // The seeded read of 9 November has other text, so it is version 2, saved with an earlier time.
+    await loadDemoHistory(store, 'UTC', DEMO_DAY);
+    const web = pages.map((p) => (p.url === PIPEDRIVE ? { ...p, text: `${p.text} Advanced now costs $39.` } : p));
+    const read = (await fetchAll(store, [PIPEDRIVE], web)).get(PIPEDRIVE)!;
+    expect(read.version).toBe(3);
+  });
 });
 
 describe('memory after extraction', () => {
@@ -272,6 +302,18 @@ describe('quote check in fetch_page', () => {
     const store = await extracted({ ...CRM_OUTPUT, claims: many });
     const read = (await fetchAll(store, [HUBSPOT])).get(HUBSPOT)!;
     expect(read.saved_claims).toHaveLength(SAVED_CLAIMS_LIMIT);
+  });
+
+  it('lists a claim once, as last said, when a re-check saved it again', async () => {
+    const store = await extracted();
+    await fetchAll(store, [HUBSPOT]);
+    // The re-check's own extraction finds the same claim in today's read.
+    const recheck = (await store.pendingExtractions()).at(-1)!;
+    const again = { ...CRM_OUTPUT, claims: [{ ...CRM_OUTPUT.claims[0], source_ref: 's1' }] };
+    await createExtractionJobs({ model: extractModel([again]), store }).run(recheck.userId, recheck.id);
+
+    const read = (await fetchAll(store, [HUBSPOT])).get(HUBSPOT)!;
+    expect(read.saved_claims).toEqual([expect.objectContaining({ entity: 'HubSpot', said_on: '2026-11-13', outcome: 'unchanged' })]);
   });
 
   it('adds nothing for a page with no saved claims', async () => {

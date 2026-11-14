@@ -28,7 +28,13 @@ export function devState(config: Pick<Config, 'DEV_CLOCK'>): DevState {
 export async function searchFor(config: Config): Promise<SearchProvider> {
   const state = devState(config);
   if (!devEnabled || state.web === 'live') return createExaSearch({ apiKey: config.EXA_API_KEY });
-  state.fixture ??= loadFixturePages().then(createFixtureSearch);
+  // A failed load is not cached, so the next request reads the pages again.
+  state.fixture ??= loadFixturePages()
+    .then(createFixtureSearch)
+    .catch((error) => {
+      state.fixture = undefined;
+      throw error;
+    });
   return state.fixture;
 }
 
