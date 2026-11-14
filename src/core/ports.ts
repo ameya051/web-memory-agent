@@ -206,9 +206,11 @@ export interface Store {
   }): Promise<{ seq: number }>;
   /** The assistant message, its exchange and its sources, in one transaction. */
   saveAnswer(answer: NewAnswer): Promise<{ exchangeId: string }>;
+  /** A thread's messages in seq order: all the model's history needs. */
+  loadMessages(userId: string, conversationId: string): Promise<StoredMessage[]>;
   /**
-   * A thread's messages in seq order, with the sources its answers read and
-   * the earlier reads its answers cited through search_memory.
+   * A thread as the page shows it: its messages in seq order, with the sources
+   * its answers read and the earlier reads its answers cited through search_memory.
    */
   loadThread(
     userId: string,

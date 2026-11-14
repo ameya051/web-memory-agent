@@ -88,6 +88,16 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
     }
   }
 
+  async function loadMessages(userId: string, conversationId: string): Promise<StoredMessage[]> {
+    const { rows } = await query<StoredMessage>(
+      'loadMessages',
+      `SELECT id, seq, role, parts, flags, timing FROM messages
+       WHERE user_id = $1 AND conversation_id = $2 ORDER BY seq`,
+      [userId, conversationId],
+    );
+    return rows;
+  }
+
   return {
     end: () => pool.end(),
 
@@ -209,14 +219,11 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
       return { exchangeId: rows[0].exchangeId };
     },
 
+    loadMessages,
+
     async loadThread(userId, conversationId) {
       const [messages, sources, citedSaved] = await Promise.all([
-        query<StoredMessage>(
-          'loadThread.messages',
-          `SELECT id, seq, role, parts, flags, timing FROM messages
-           WHERE user_id = $1 AND conversation_id = $2 ORDER BY seq`,
-          [userId, conversationId],
-        ),
+        loadMessages(userId, conversationId),
         query<ThreadSource>(
           'loadThread.sources',
           `SELECT s.ref, s.url, s.title, s.published_at::text AS "publishedAt", s.via,
@@ -242,7 +249,7 @@ export function createPostgresStore(connectionString: string): Store & { end(): 
           [userId, conversationId],
         ),
       ]);
-      return { messages: messages.rows, sources: sources.rows, citedSaved: citedSaved.rows };
+      return { messages, sources: sources.rows, citedSaved: citedSaved.rows };
     },
 
     async listConversations(userId) {

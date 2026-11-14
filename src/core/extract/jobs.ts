@@ -17,7 +17,7 @@ export const EXTRACT_TIMEOUT_MS = 60_000;
 
 export function createExtractionJobs(deps: { model: LanguageModel; store: Store; retryDelaysMs?: number[] }) {
   const { model, store } = deps;
-  const delays = RETRY_DELAYS_MS;
+  const delays = deps.retryDelaysMs ?? RETRY_DELAYS_MS;
   // Exchanges with a job running now, so a hot reload or a repeated trigger
   // cannot start the same job twice.
   const running = new Set<string>();

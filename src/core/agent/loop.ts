@@ -36,10 +36,10 @@ export async function runChat(deps: AgentDeps, request: ChatRequest, abortSignal
   const query = text.replace(/\s+/g, ' ').trim();
 
   // Saved on arrival, so the question survives a failed answer (spec 5.3).
-  // The save, the thread load and the memory index run in parallel: one round
+  // The save, the message load and the memory index run in parallel: one round
   // trip, not three.
   const user = await deps.store.ensureUser(timeZone, askedAt);
-  const [, thread, recent] = await Promise.all([
+  const [, messages, recent] = await Promise.all([
     deps.store.saveUserMessage({
       id: messageId,
       conversationId,
@@ -48,13 +48,13 @@ export async function runChat(deps: AgentDeps, request: ChatRequest, abortSignal
       title: conversationTitle(text),
       createdAt: askedAt,
     }),
-    deps.store.loadThread(user.id, conversationId),
+    deps.store.loadMessages(user.id, conversationId),
     deps.store.recentExchanges(user.id, INDEX_SIZE),
   ]);
   // Everything before this question. The load may or may not see the question
   // itself, and on a repeated send it is already there.
-  const at = thread.messages.findIndex((m) => m.id === messageId);
-  const history = modelHistory(at === -1 ? thread.messages : thread.messages.slice(0, at));
+  const at = messages.findIndex((m) => m.id === messageId);
+  const history = modelHistory(at === -1 ? messages : messages.slice(0, at));
   log.info('chat.request', { tz: timeZone, history: history.length, memoryIndex: recent.length, text: query });
 
   const exchange = createExchange({ userId: user.id, conversationId, userMessageId: messageId, question: text, askedAt, timeZone });
