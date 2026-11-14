@@ -123,7 +123,8 @@
             },
             {
               "fetch": "https://supabase.com/pricing",
-              "ref": "s4"
+              "ref": "s4",
+              "text": "Supabase pricing. The Free plan includes a 500 MB Postgres database and 2 active projects. The Pro plan costs $25 per month per organization and includes an 8 GB database and $10 of compute credits. The Team plan costs $549 per month."
             }
           ],
           "answer": "Neon's Free plan includes 0.5 GB of storage and 100 compute hours per project per month, and its Launch plan is usage-based at $0.14 per compute-unit hour [s3]. Supabase's Pro plan costs $25 per month per organization and includes an 8 GB database [s4].\n\nFor a small SaaS with steady traffic, Supabase Pro gives the more predictable bill. Neon costs less when the database sits idle much of the time."

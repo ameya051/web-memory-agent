@@ -66,7 +66,7 @@ Each request also carries the current date and a short index of recent topics. T
 - **Speed comes from fewer model calls.** There is no planning step, tool calls run in parallel, extraction happens after the response, and the stable prompt is cached. A simple question takes two model calls; a "what changed" question takes three.
 - **Accuracy comes from checks in code.** Every citation must point to a page read in that exchange, and every cited number must appear in that page's text. Figures that fail are marked unverified. A failed search yields "couldn't verify", never an answer from the model's training data.
 - **Injection is limited by what the tools can do.** The agent has no write tools, cannot fetch arbitrary URLs, and never takes a user id from the model. Per-answer budgets cap each tool. Web and memory content are both treated as untrusted data.
-- **It is testable without the web.** The core imports only the AI SDK and zod, and depends on three small ports: search, store and clock. Tests and the eval swap in fixture pages with known content and a settable clock, so verdicts can be scored. The same clock lets a seed script recreate "last Tuesday" on a fresh clone.
+- **It is testable without the web.** The core imports only the AI SDK and zod, and depends on three small ports: search, store and clock. Tests and the eval swap in fixture pages with known content and a settable clock, so verdicts can be scored. The same clock lets a seed script recreate "last Tuesday" on a fresh clone. `npm run eval` scores 15 cases (the sample queries, empty history, a failed search, injection, timezones) with code checks on the tool trace and a small judge model for the answer text.
 
 ```mermaid
 flowchart TB

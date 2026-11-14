@@ -1,0 +1,53 @@
+[
+  {
+    "question": "What's the current Node.js LTS version?",
+    "topic": "Current Node.js LTS version",
+    "summary": "The user asked which Node.js version is the current LTS. The answer said Node.js 26 entered Active LTS on 28 October 2026 and Node.js 24 is in Maintenance LTS until 30 April 2028.",
+    "entities": ["Node.js"],
+    "claims": [
+      {
+        "entity": "Node.js",
+        "attribute": "Active LTS version",
+        "value": "Node.js 26, Active LTS since 28 October 2026",
+        "source_ref": "s2",
+        "quote": "Node.js 26 entered Active LTS on 28 October 2026 and is the recommended version for most users"
+      },
+      {
+        "entity": "Node.js",
+        "attribute": "Node.js 24 support",
+        "value": "Maintenance LTS until 30 April 2028",
+        "source_ref": "s2",
+        "quote": "Node.js 24 is in Maintenance LTS until 30 April 2028"
+      }
+    ]
+  },
+  {
+    "question": "We're a 20-person sales team. Shortlist 5 CRM tools for us, with pricing.",
+    "topic": "CRM shortlist for a 20-person sales team",
+    "summary": "The user asked for five CRM tools for a 20-person sales team, with pricing. The answer compared HubSpot Sales Hub, Pipedrive, Salesforce Sales Cloud, Zoho CRM and Freshsales on their entry and mid plans.",
+    "entities": ["HubSpot Sales Hub", "Pipedrive", "Salesforce Sales Cloud", "Zoho CRM", "Freshsales"],
+    "claims": [
+      { "entity": "HubSpot Sales Hub", "attribute": "Starter price", "value": "$20 per seat per month, billed annually", "source_ref": "s6", "quote": "Sales Hub Starter costs $20 per seat per month, billed annually" },
+      { "entity": "HubSpot Sales Hub", "attribute": "Professional price", "value": "$90 per seat per month, billed annually", "source_ref": "s6", "quote": "Sales Hub Professional costs $90 per seat per month, billed annually" },
+      { "entity": "Pipedrive", "attribute": "Essential price", "value": "$14 per seat per month, billed annually", "source_ref": "s7", "quote": "Essential costs $14 per seat per month, billed annually" },
+      { "entity": "Pipedrive", "attribute": "Advanced price", "value": "$24 per seat per month", "source_ref": "s7", "quote": "Advanced costs $24 per seat per month" },
+      { "entity": "Salesforce Sales Cloud", "attribute": "Starter Suite price", "value": "$25 per user per month, billed annually", "source_ref": "s8", "quote": "Starter Suite costs $25 per user per month, billed annually" },
+      { "entity": "Salesforce Sales Cloud", "attribute": "Pro Suite price", "value": "$100 per user per month, billed annually", "source_ref": "s8", "quote": "Pro Suite costs $100 per user per month, billed annually" },
+      { "entity": "Zoho CRM", "attribute": "Standard price", "value": "$14 per user per month, billed annually", "source_ref": "s9", "quote": "Standard costs $14 per user per month, billed annually" },
+      { "entity": "Zoho CRM", "attribute": "Professional price", "value": "$23 per user per month, billed annually", "source_ref": "s9", "quote": "Professional costs $23 per user per month, billed annually" },
+      { "entity": "Freshsales", "attribute": "Growth price", "value": "$9 per user per month, billed annually", "source_ref": "s10", "quote": "Growth costs $9 per user per month, billed annually" },
+      { "entity": "Freshsales", "attribute": "Pro price", "value": "$39 per user per month, billed annually", "source_ref": "s10", "quote": "Pro costs $39 per user per month, billed annually" }
+    ]
+  },
+  {
+    "question": "Compare Postgres hosting for a small SaaS: Neon vs Supabase, mainly on price.",
+    "topic": "Postgres hosting comparison: Neon vs Supabase on price",
+    "summary": "The user asked to compare Neon and Supabase Postgres hosting on price for a small SaaS. The answer gave Neon's Free and Launch plans and Supabase's Pro plan, and said Supabase Pro is more predictable while Neon costs less when idle.",
+    "entities": ["Neon", "Supabase"],
+    "claims": [
+      { "entity": "Neon", "attribute": "Free plan", "value": "0.5 GB of storage and 100 compute hours per project per month", "source_ref": "s3", "quote": "The Free plan includes 0.5 GB of storage and 100 compute hours per project per month" },
+      { "entity": "Neon", "attribute": "Launch plan compute price", "value": "$0.14 per compute-unit hour", "source_ref": "s3", "quote": "The Launch plan is usage-based at $0.14 per compute-unit hour" },
+      { "entity": "Supabase", "attribute": "Pro plan price", "value": "$25 per month per organization, with an 8 GB database", "source_ref": "s4", "quote": "The Pro plan costs $25 per month per organization and includes an 8 GB database" }
+    ]
+  }
+]
