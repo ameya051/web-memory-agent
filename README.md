@@ -50,6 +50,10 @@ Then ask, for example:
 | `npm run seed [-- --tz Area/City]` | Loads the demo history and extracts its claims |
 | `npm test` | Runs the tests; they use fixture pages, a mock model and `TEST_DATABASE_URL`, so they need no API keys |
 | `npm run typecheck` | Type-checks the project |
+| `npm run eval` | Scores the 15 cases in `evals/cases.ts` on fixture pages and seeded history; needs `OPENROUTER_API_KEY` and `TEST_DATABASE_URL` |
+| `npm run eval -- --live` | Runs the same queries against live Exa and reports latency only; also needs `EXA_API_KEY` |
+
+The eval also takes `--case id,id`, `--model <OpenRouter slug>`, `--effort low\|medium\|high` and `--verbose`. Each run writes answers and tool traces to `evals/results/`.
 
 ## Layout
 
